@@ -6,6 +6,7 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <chrono>
+#include <execution>
 
 #include "apriltag.h"
 #include "tag36h11.h"
@@ -22,7 +23,7 @@ class april_follow
     public:
         april_follow(int tag_n);
         void pre_process();
-        void load_image(std::string path);
+        void load_image(const cv::Mat &img_in);
         void detect();
         void show_tag();
         ~april_follow()
@@ -45,22 +46,26 @@ class april_follow
             shifty = 0;
         }
 
+        int seen    = 0;
+
     private:
+
+        void _get_tag_borders(apriltag_detection_t * tag);
 
         apriltag_family_t   *tf_         = NULL;
         apriltag_detector_t *td_         = apriltag_detector_create();
         zarray_t *detections_            = NULL;
         apriltag_detection_t * curr_det_ = NULL;
         
-        time_point<std::chrono::high_resolution_clock> start = high_resolution_clock::now();
-        time_point<std::chrono::high_resolution_clock> end   = high_resolution_clock::now();
-
-        int seen    = 0;
-        int timetot = 0;
+        
+        // int timetot = 0;
         const int tag_n_   = 0;
 
-        int res_width  = 1920;
-        int res_height = 1080;
+        // int res_width  = 1920;
+        // int res_height = 1080;
+
+        int res_width  = 1280;
+        int res_height = 1024;
 
         int bounds_[4][2] = {{0,0},{0,0},{res_width,res_height},{res_width,res_height}};
         int shiftx = 0;
@@ -72,7 +77,21 @@ class april_follow
 
         image_u8_t* im_;
         cv::Mat     imgRoi_;
-        cv::Mat     img_;
+        std::shared_ptr<cv::Mat> img_;
+};
 
-        void get_tag_borders_(apriltag_detection_t * tag);
+
+class april_manager
+{
+    public:
+        april_manager();
+        void add_april_tag(int index);
+        void load_image(const cv::Mat &img_in);
+        void detect();
+        int  count();
+        void debug();
+
+    private:
+
+        std::vector<std::shared_ptr<april_follow>> _april_followers;
 };

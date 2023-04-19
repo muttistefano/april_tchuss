@@ -16,12 +16,16 @@ tag_n_(tag_n)
     td_->debug         = 0;
     td_->refine_edges  = 1;
 
-    start = high_resolution_clock::now();
-    end   = high_resolution_clock::now();
-
 }
 
-void april_follow::get_tag_borders_(apriltag_detection_t * tag)
+void april_follow::load_image(const cv::Mat &img_in)
+{
+    //TODO std::move
+    img_ = std::make_shared<cv::Mat>(img_in);
+    // img_ = cv::imread(path, cv::IMREAD_GRAYSCALE);
+}
+
+void april_follow::_get_tag_borders(apriltag_detection_t * tag)
 {
     bounds_[0][0] = ((tag->p[0][0] - tag->c[0]) * 3) + tag->c[0];
     bounds_[0][1] = ((tag->p[0][1] - tag->c[1]) * 3) + tag->c[1];
@@ -35,6 +39,7 @@ void april_follow::get_tag_borders_(apriltag_detection_t * tag)
 
 void april_follow::pre_process()
 {
+    // std::cout << "preprocess"  << "\n" ;
     int pTopLeft_x     = std::min({bounds_[0][0],bounds_[1][0],bounds_[2][0],bounds_[3][0]}) ;
     pTopLeft_x         = std::clamp(pTopLeft_x + shiftx,0,res_width);
     int pTopLeft_y     = std::min({bounds_[0][1],bounds_[1][1],bounds_[2][1],bounds_[3][1]}) ;
@@ -47,15 +52,16 @@ void april_follow::pre_process()
     pBottomRight_y     = std::clamp(pBottomRight_y + shifty,0,res_height);
     pBottomRight_      = cv::Point(pBottomRight_x,pBottomRight_y);
 
-    // std::cout << " ptop pbot " << pTopLeft_ << " " << pBottomRight_ << "\n";
+    std::cout << " ptop pbot " << pTopLeft_ << " " << pBottomRight_ << "\n";
+    std::cout << " ptop pbot " << img_->rows << " " << img_->cols << "\n";
 
     shiftx = pTopLeft_x;
     shifty = pTopLeft_y;
     // std::cout << "shifts "<< shiftx << " " << shifty << "\n";
 
     rRect_        = cv::Rect(pTopLeft_, pBottomRight_);
-    // imgRoi_      = cv::Mat(img(rRect).clone());
-    imgRoi_       = img_(rRect_).clone();
+    //TOTO withoud clone it doesen't work
+    imgRoi_       = (*img_)(rRect_).clone();
     im_ = new image_u8_t  
         {   .width  = imgRoi_.cols,
             .height = imgRoi_.rows,
@@ -64,14 +70,12 @@ void april_follow::pre_process()
         };
 }
 
-void april_follow::load_image(std::string path)
-{
-    img_ = cv::imread(path, cv::IMREAD_GRAYSCALE);
-}
+
 
 void april_follow::detect()
 {
     // std::cout << "inputting : " << im_->height << " " << im_->width << " " << im_->stride << "\n" ;
+    // std::cout << "detect"  << "\n" ;
     detections_ = apriltag_detector_detect(td_, im_);
 
     for (int i = 0; i < zarray_size(detections_); i++)
@@ -83,16 +87,15 @@ void april_follow::detect()
         {
             // std::cout << det->id << " found \n";
             *curr_det_ = *det;
-            this->get_tag_borders_(curr_det_);
+            this->_get_tag_borders(curr_det_);
+            seen++;
         }
-        
-
     }
+
     if (zarray_size(detections_)==0){
         std::cout << "no tag\n";
         reset_bounds();
         }
-    // this->get_tag_borders_(curr_det_);
     apriltag_detections_destroy(detections_);
 }
 
@@ -104,51 +107,74 @@ void april_follow::show_tag()
     // cv::line(img_, cv::Point(bounds_[1][0], bounds_[1][1]),cv::Point(bounds_[2][0], bounds_[2][1]),cv::Scalar(0xff, 0, 0), 2);
     // cv::line(img_, cv::Point(bounds_[2][0], bounds_[2][1]),cv::Point(bounds_[3][0], bounds_[3][1]),cv::Scalar(0xff, 0, 0), 2);
 
-    cv::imshow("Detections", img_);
-    cv::imshow("imgRoi", imgRoi_);
-    if (cv::waitKey(0) >= 0)
+    cv::imshow("Detections_" + std::to_string(this->tag_n_), *img_);
+    cv::imshow("imgRoi_" + std::to_string(this->tag_n_), imgRoi_);
+    // if (cv::waitKey(0) >= 0)
+    // {
+    //     cv::destroyWindow("Detections");
+    //     cv::destroyWindow("imgRoi");
+    // }
+}
+
+april_manager::april_manager(){}
+
+void april_manager::add_april_tag(int index)
+{
+    _april_followers.push_back(std::make_shared<april_follow>(index));
+}
+
+void april_manager::load_image(const cv::Mat &img_in)
+{
+    std::for_each(std::execution::par,
+    _april_followers.begin(),_april_followers.end(),
+    [&img_in]
+    (auto&& item)
     {
-        cv::destroyWindow("Detections");
-        cv::destroyWindow("imgRoi");
-    }
+        item->load_image(img_in);
+    });
 }
 
 
-int main(int argc, char *argv[])
+void april_manager::detect()
+{
+    std::for_each(std::execution::par,
+    _april_followers.begin(),_april_followers.end(),
+    []
+    (auto&& item)
+    {
+        item->pre_process();
+        item->detect();
+    });
+}
+
+int april_manager::count()
+{
+    int count = 0;
+    std::for_each(
+    _april_followers.begin(),_april_followers.end(),
+    [&count]
+    (auto&& item)
+    {
+        count += item->seen;
+    });
+
+    return count;
+}
+
+void april_manager::debug()
 {
 
-    april_follow node_0 = april_follow(0);
-    april_follow node_2 = april_follow(2);
-    april_follow node_3 = april_follow(3);
+    int count = 0;
+    std::for_each(
+    _april_followers.begin(),_april_followers.end(),
+    [&count]
+    (auto&& item)
+    {
+        item->show_tag();
+    });
 
-    std::string image_path_root = "/home/kolmogorov/april_test/imgs2/img";
-   
-    auto start  = high_resolution_clock::now();
-    auto end    = high_resolution_clock::now();
-    int timetot = 0;
-
-    for (int cnt=0;cnt<100;cnt++){
-        std::string path = image_path_root + std::to_string(cnt) + ".jpg"; 
-        node_0.load_image(path);
-        node_0.pre_process();
-        node_0.detect();
-        // node.show_tag();
-        // node_2.load_image(path);
-        // node_2.pre_process();
-        // node_2.detect();
-        // node_2.show_tag();
-        // node_3.load_image(path);
-        // node_3.pre_process();
-        // node_3.detect();
-        end = high_resolution_clock::now();
-        auto duration = duration_cast<milliseconds>(end - start);
-        timetot += duration.count();
-        // std::cout << cnt << " " << duration.count() << "\n";
-
-        start = end;
-
+    if (cv::waitKey(0) == 27 )
+    {
+        cv::destroyAllWindows();
     }
-
-
-    std::cout  << " avg " << (float)timetot/100.0 << "ms \n";
 }
