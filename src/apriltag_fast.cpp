@@ -16,6 +16,9 @@ tag_n_(tag_n)
     td_->debug         = 0;
     td_->refine_edges  = 1;
 
+    _c_time      = high_resolution_clock::now();
+    _c_time_old  = high_resolution_clock::now();
+
 }
 
 void april_follow::load_image(const cv::Mat &img_in)
@@ -23,18 +26,33 @@ void april_follow::load_image(const cv::Mat &img_in)
     //TODO std::move
     img_ = std::make_shared<cv::Mat>(img_in);
     // img_ = cv::imread(path, cv::IMREAD_GRAYSCALE);
+    _c_time  = high_resolution_clock::now();
 }
 
-void april_follow::_get_tag_borders(apriltag_detection_t * tag)
+void april_follow::_get_tag_vel(apriltag_detection_t * tag)
 {
-    bounds_[0][0] = ((tag->p[0][0] - tag->c[0]) * 3) + tag->c[0];
-    bounds_[0][1] = ((tag->p[0][1] - tag->c[1]) * 3) + tag->c[1];
-    bounds_[1][0] = ((tag->p[1][0] - tag->c[0]) * 3) + tag->c[0];
-    bounds_[1][1] = ((tag->p[1][1] - tag->c[1]) * 3) + tag->c[1];
-    bounds_[2][0] = ((tag->p[2][0] - tag->c[0]) * 3) + tag->c[0];
-    bounds_[2][1] = ((tag->p[2][1] - tag->c[1]) * 3) + tag->c[1];
-    bounds_[3][0] = ((tag->p[3][0] - tag->c[0]) * 3) + tag->c[0];
-    bounds_[3][1] = ((tag->p[3][1] - tag->c[1]) * 3) + tag->c[1];
+    // std::cout << "1 " << _vx << " " << _vy << "\n";
+    // std::cout << "2 " << duration<double> (_c_time_old - _c_time).count() << " " << _vy << "\n";
+    // std::cout << "3 " << _cx_old << " " << _cy_old << "\n";
+    // std::cout << "4 " <<shiftx << " " << shifty << "\n";
+    _vx = (_cx_old - (double)(shiftx + tag->c[0]) );// / duration<double>(_c_time_old - _c_time).count();
+    _vy = (_cy_old - (double)(shifty + tag->c[1]) );// / duration<double>(_c_time_old - _c_time).count();
+    _c_time_old = _c_time;
+    _cx_old = (double)(shiftx + tag->c[0]);
+    _cy_old = (double)(shifty + tag->c[1]);
+    // std::cout << "1 " << _vx << " " << _vy << "\n";
+}
+
+void april_follow::_get_tag_borders_center(apriltag_detection_t * tag)
+{
+    bounds_[0][0] = ((tag->p[0][0] - tag->c[0]) * (_roi_tag_scale_x + _vx)) + tag->c[0];
+    bounds_[0][1] = ((tag->p[0][1] - tag->c[1]) * (_roi_tag_scale_y + _vy)) + tag->c[1];
+    bounds_[1][0] = ((tag->p[1][0] - tag->c[0]) * (_roi_tag_scale_x + _vx)) + tag->c[0];
+    bounds_[1][1] = ((tag->p[1][1] - tag->c[1]) * (_roi_tag_scale_y + _vy)) + tag->c[1];
+    bounds_[2][0] = ((tag->p[2][0] - tag->c[0]) * (_roi_tag_scale_x + _vx)) + tag->c[0];
+    bounds_[2][1] = ((tag->p[2][1] - tag->c[1]) * (_roi_tag_scale_y + _vy)) + tag->c[1];
+    bounds_[3][0] = ((tag->p[3][0] - tag->c[0]) * (_roi_tag_scale_x + _vx)) + tag->c[0];
+    bounds_[3][1] = ((tag->p[3][1] - tag->c[1]) * (_roi_tag_scale_y + _vy)) + tag->c[1];
 }
 
 void april_follow::pre_process()
@@ -52,8 +70,8 @@ void april_follow::pre_process()
     pBottomRight_y     = std::clamp(pBottomRight_y + shifty,0,res_height);
     pBottomRight_      = cv::Point(pBottomRight_x,pBottomRight_y);
 
-    std::cout << " ptop pbot " << pTopLeft_ << " " << pBottomRight_ << "\n";
-    std::cout << " ptop pbot " << img_->rows << " " << img_->cols << "\n";
+    // std::cout << " ptop pbot " << pTopLeft_ << " " << pBottomRight_ << "\n";
+    // std::cout << " ptop pbot " << img_->rows << " " << img_->cols << "\n";
 
     shiftx = pTopLeft_x;
     shifty = pTopLeft_y;
@@ -80,14 +98,15 @@ void april_follow::detect()
 
     for (int i = 0; i < zarray_size(detections_); i++)
     {
-
+        //TODO not important allocation
         apriltag_detection_t *det;
         zarray_get(detections_, i, &det);
         if(det->id == tag_n_)
         {
             // std::cout << det->id << " found \n";
             *curr_det_ = *det;
-            this->_get_tag_borders(curr_det_);
+            this->_get_tag_borders_center(curr_det_);
+            this->_get_tag_vel(curr_det_);
             seen++;
         }
     }
@@ -102,12 +121,13 @@ void april_follow::detect()
 void april_follow::show_tag()
 {
 
-    // cv::line(img_, cv::Point(bounds_[0][0], bounds_[0][1]),cv::Point(bounds_[1][0], bounds_[1][1]),cv::Scalar(0xff, 0, 0), 2);
-    // cv::line(img_, cv::Point(bounds_[0][0], bounds_[0][1]),cv::Point(bounds_[3][0], bounds_[3][1]),cv::Scalar(0xff, 0, 0), 2);
-    // cv::line(img_, cv::Point(bounds_[1][0], bounds_[1][1]),cv::Point(bounds_[2][0], bounds_[2][1]),cv::Scalar(0xff, 0, 0), 2);
-    // cv::line(img_, cv::Point(bounds_[2][0], bounds_[2][1]),cv::Point(bounds_[3][0], bounds_[3][1]),cv::Scalar(0xff, 0, 0), 2);
+    cv::line(*img_, cv::Point(_cx_old, _cy_old),cv::Point(_cx_old + _vx, _cy_old + _vy),cv::Scalar(0xff, 0, 0), 2);
+    // cv::line(*img_, cv::Point(bounds_[0][0], bounds_[0][1]),cv::Point(bounds_[1][0], bounds_[1][1]),cv::Scalar(0xff, 0, 0), 2);
+    // cv::line(*img_, cv::Point(bounds_[0][0], bounds_[0][1]),cv::Point(bounds_[3][0], bounds_[3][1]),cv::Scalar(0xff, 0, 0), 2);
+    // cv::line(*img_, cv::Point(bounds_[1][0], bounds_[1][1]),cv::Point(bounds_[2][0], bounds_[2][1]),cv::Scalar(0xff, 0, 0), 2);
+    // cv::line(*img_, cv::Point(bounds_[2][0], bounds_[2][1]),cv::Point(bounds_[3][0], bounds_[3][1]),cv::Scalar(0xff, 0, 0), 2);
 
-    cv::imshow("Detections_" + std::to_string(this->tag_n_), *img_);
+    // cv::imshow("Detections_" + std::to_string(this->tag_n_), *img_);
     cv::imshow("imgRoi_" + std::to_string(this->tag_n_), imgRoi_);
     // if (cv::waitKey(0) >= 0)
     // {
@@ -173,8 +193,11 @@ void april_manager::debug()
         item->show_tag();
     });
 
-    if (cv::waitKey(0) == 27 )
+    cv::imshow("Base image", *_april_followers[0]->img_);
+
+    if (cv::waitKey(1) == 27 )
     {
-        cv::destroyAllWindows();
+        // cv::destroyAllWindows();
+        
     }
 }

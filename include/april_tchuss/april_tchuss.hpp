@@ -50,17 +50,34 @@ class april_follow
 
     private:
 
-        void _get_tag_borders(apriltag_detection_t * tag);
+        double _roi_tag_scale_x = 1.1;
+        double _roi_tag_scale_y = 1.1;
+
+        void _get_tag_borders_center(apriltag_detection_t * tag);
+        void _get_tag_vel(apriltag_detection_t * tag);
 
         apriltag_family_t   *tf_         = NULL;
         apriltag_detector_t *td_         = apriltag_detector_create();
         zarray_t *detections_            = NULL;
         apriltag_detection_t * curr_det_ = NULL;
         
+        double _cx_old = 0;
+        double _cy_old = 0;
+        // double _vx_old = 0;
+        // double _vy_old = 0;
+
+        // double _cx = 0;
+        // double _cy = 0;
+        double _vx = 1;
+        double _vy = 1;
+
+        std::chrono::system_clock::time_point _c_time_old;
+        std::chrono::system_clock::time_point _c_time;
         
         // int timetot = 0;
         const int tag_n_   = 0;
 
+        //TODO set widht and height
         // int res_width  = 1920;
         // int res_height = 1080;
 
@@ -78,6 +95,8 @@ class april_follow
         image_u8_t* im_;
         cv::Mat     imgRoi_;
         std::shared_ptr<cv::Mat> img_;
+
+        friend class april_manager;
 };
 
 

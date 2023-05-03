@@ -3,13 +3,13 @@ import numpy as np
 
 cc = 0
 
-fd = open('/home/kolmogorov/april_test/Acquisizione02.raw', 'rb')
+fd = open('/home/gino/april_test/Acquisizione01.raw', 'rb')
 while(1):
     rows = 1024
     cols = 1280
     f = np.fromfile(fd, dtype=np.uint8,count=rows*cols)
     im = f.reshape((rows, cols)) #notice row, column format
-    cv2.imwrite("/home/kolmogorov/april_test/bari2/img_" + str(cc) + ".jpg", im)
+    cv2.imwrite("/home/gino/april_test/bari1/img_" + str(cc) + ".jpg", im)
     # print(im)
     # while(1):
     #     cv2.imshow('', im)
